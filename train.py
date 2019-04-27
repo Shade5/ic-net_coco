@@ -6,6 +6,7 @@ import torch
 import random
 import argparse
 import numpy as np
+import cv2
 
 from torch.utils import data
 from tqdm import tqdm
@@ -39,22 +40,27 @@ def train(cfg, writer, logger):
 
     # Setup Dataloader
     data_loader = get_loader(cfg["data"]["dataset"])
-    data_path = cfg["data"]["path"]
+    ann_path = cfg["data"]["ann_path"]
 
     t_loader = data_loader(
-        data_path,
+        cfg["data"]["ann_path"],
+        cfg["data"]["im_path"],
         is_transform=True,
-        split=cfg["data"]["train_split"],
+        split="train",
         img_size=(cfg["data"]["img_rows"], cfg["data"]["img_cols"]),
         augmentations=data_aug,
     )
 
-    t_loader[0]
+    img, lbl = t_loader[67]
+    cv2.imshow("img", np.transpose(img.cpu().numpy(), (1, 2, 0)))
+    cv2.imshow("lbl", 255*lbl.cpu().numpy())
+    cv2.waitKey(0)
 
     v_loader = data_loader(
-        data_path,
+        cfg["data"]["ann_path"],
+        cfg["data"]["im_path"],
         is_transform=True,
-        split=cfg["data"]["val_split"],
+        split="val",
         img_size=(cfg["data"]["img_rows"], cfg["data"]["img_cols"]),
     )
 
@@ -209,7 +215,7 @@ if __name__ == "__main__":
         "--config",
         nargs="?",
         type=str,
-        default="configs/frrnB_cityscapes.yml",
+        default="configs/coco.yml",
         help="Configuration file to use",
     )
 
