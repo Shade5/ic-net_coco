@@ -79,6 +79,9 @@ class pspnet(nn.Module):
 
         # Define auxiliary loss function
         self.loss = multi_scale_cross_entropy2d
+        self.px = None
+        self.cx = None
+        self.clx = None
 
     def forward(self, x):
         inp_shape = x.shape[2:]
@@ -104,13 +107,13 @@ class pspnet(nn.Module):
 
         x = self.res_block5(x)
 
-        x = self.pyramid_pooling(x)
+        self.px = self.pyramid_pooling(x)
 
-        x = self.cbr_final(x)
-        x = self.dropout(x)
+        self.cx = self.cbr_final(self.px)
+        x = self.dropout(self.cx)
 
-        x = self.classification(x)
-        x = F.interpolate(x, size=inp_shape, mode="bilinear", align_corners=True)
+        self.clx = self.classification(x)
+        x = F.interpolate(self.clx, size=inp_shape, mode="bilinear", align_corners=True)
 
         if self.training:
             return (x, x_aux)

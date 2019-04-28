@@ -4,7 +4,6 @@ import numpy as np
 import scipy.misc as m
 
 from torch.utils import data
-import cv2
 
 from ptsemseg.utils import recursive_glob
 from ptsemseg.augmentations import Compose, RandomHorizontallyFlip, RandomRotate, Scale
@@ -12,12 +11,9 @@ from ptsemseg.augmentations import Compose, RandomHorizontallyFlip, RandomRotate
 
 class cityscapesLoader(data.Dataset):
     """cityscapesLoader
-
     https://www.cityscapes-dataset.com
-
     Data is derived from CityScapes, and can be downloaded from here:
     https://www.cityscapes-dataset.com/downloads/
-
     Many Thanks to @fvisin for the loader repo:
     https://github.com/fvisin/dataset_loaders/blob/master/dataset_loaders/images/cityscapes.py
     """
@@ -58,12 +54,11 @@ class cityscapesLoader(data.Dataset):
         is_transform=False,
         img_size=(512, 1024),
         augmentations=None,
-        img_norm=True,
+        img_norm=False,
         version="cityscapes",
         test_mode=False,
     ):
         """__init__
-
         :param root:
         :param split:
         :param is_transform:
@@ -77,7 +72,7 @@ class cityscapesLoader(data.Dataset):
         self.img_norm = img_norm
         self.n_classes = 19
         self.img_size = img_size if isinstance(img_size, tuple) else (img_size, img_size)
-        self.mean = np.array(self.mean_rgb[version])
+        self.mean = np.array(self.mean_rgb['pascal'])
         self.files = {}
 
         self.images_base = os.path.join(self.root, "leftImg8bit", self.split)
@@ -133,10 +128,10 @@ class cityscapesLoader(data.Dataset):
         self.ignore_index = 250
         self.class_map = dict(zip(self.valid_classes, range(19)))
 
-        # if not self.files[split]:
-        #     raise Exception("No files for split=[%s] found in %s" % (split, self.images_base))
-        #
-        # print("Found %d %s images" % (len(self.files[split]), split))
+        if not self.files[split]:
+            raise Exception("No files for split=[%s] found in %s" % (split, self.images_base))
+
+        print("Found %d %s images" % (len(self.files[split]), split))
 
     def __len__(self):
         """__len__"""
@@ -144,15 +139,17 @@ class cityscapesLoader(data.Dataset):
 
     def __getitem__(self, index):
         """__getitem__
-
         :param index:
         """
-        # img_path = self.files[self.split][index].rstrip()
-        lbl_path = "/home/a/Desktop/CMU/1-2/Visual Learning/project/pytorch-semseg/gtFine/train/aachen/aachen_000000_000019_gtFine_labelIds.png"
-        n = m.imread("/home/a/Desktop/CMU/1-2/Visual Learning/project/pytorch-semseg/a.png")
+        img_path = self.files[self.split][index].rstrip()
+        lbl_path = os.path.join(
+            self.annotations_base,
+            img_path.split(os.sep)[-2],
+            os.path.basename(img_path)[:-15] + "gtFine_labelIds.png",
+        )
 
-        # img = m.imread(img_path)
-        # img = np.array(img, dtype=np.uint8)
+        img = m.imread(img_path)
+        img = np.array(img, dtype=np.uint8)
 
         lbl = m.imread(lbl_path)
         lbl = self.encode_segmap(np.array(lbl, dtype=np.uint8))
@@ -163,11 +160,10 @@ class cityscapesLoader(data.Dataset):
         if self.is_transform:
             img, lbl = self.transform(img, lbl)
 
-        return img, lbl
+        return img, lbl, os.path.basename(img_path)
 
     def transform(self, img, lbl):
         """transform
-
         :param img:
         :param lbl:
         """

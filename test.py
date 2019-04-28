@@ -32,7 +32,7 @@ def test(args):
     img = io.imread(args.img_path)
 
     data_loader = get_loader(args.dataset)
-    loader = data_loader(root='cityscapes', is_transform=True, img_norm=args.img_norm, test_mode=True)
+    loader = data_loader(root='/mnt/4c71d2c2-a089-4f4b-abb2-5f3c31b21334/cityscapes', is_transform=True, img_norm=args.img_norm, test_mode=True)
     n_classes = loader.n_classes
 
     img = resize(img, (loader.img_size[0], loader.img_size[1]), preserve_range=True)
