@@ -5,6 +5,8 @@ import torch.nn.functional as F
 
 from ptsemseg.models.utils import get_upsampling_weight
 from ptsemseg.loss import cross_entropy2d
+from torchvision.models import resnet50
+import torch
 
 
 # FCN32s
@@ -245,6 +247,8 @@ class fcn8s(nn.Module):
         self.n_classes = n_classes
         self.loss = functools.partial(cross_entropy2d, size_average=False)
 
+
+
         self.conv_block1 = nn.Sequential(
             nn.Conv2d(3, 64, 3, padding=100),
             nn.ReLU(inplace=True),
@@ -374,7 +378,7 @@ class fcn8s(nn.Module):
                 if isinstance(l1, nn.Conv2d) and isinstance(l2, nn.Conv2d):
                     assert l1.weight.size() == l2.weight.size()
                     assert l1.bias.size() == l2.bias.size()
-                    l2.weight.data = l1.weight.data
+                    l2.weight.data = l1.weight.dataself.classification(feature)
                     l2.bias.data = l1.bias.data
         for i1, i2 in zip([0, 3], [0, 3]):
             l1 = vgg16.classifier[i1]
@@ -387,3 +391,49 @@ class fcn8s(nn.Module):
             l2 = self.classifier[6]
             l2.weight.data = l1.weight.data[:n_class, :].view(l2.weight.size())
             l2.bias.data = l1.bias.data[:n_class]
+
+
+class ResNetFCN(nn.Module):
+    def __init__(self, n_classes=21):
+        super(ResNetFCN, self).__init__()
+        self.n_classes = n_classes
+        self.backbone = nn.Sequential(*list(resnet50(True).children())[:6])
+        self.classification = nn.Conv2d(512, self.n_classes, 1, 1, 0)
+
+        # Loss
+        self.lambda_ = 10
+        self.size_average = True
+        self.ignore_label = 250
+        self.cs = nn.CosineEmbeddingLoss(size_average=True)
+        self.softmax = nn.Softmax(dim=1)
+        self.y = torch.tensor(1).cuda().float()
+
+    def loss(self, student_feat, student_score, teacher_feat, teacher_score, target, train_type="regular"):
+        # scores KL divergence
+        teacher_score = self.softmax(teacher_score)
+        student_score_flat = student_score.view(student_score.shape[0], -1)
+        teacher_score_flat = teacher_score.view(teacher_score.shape[0], -1)
+        score_kl = F.kl_div(student_score_flat, teacher_score_flat, size_average=True)
+
+        # pairwise distillation loss
+        upsample_score = F.interpolate(student_score, (512, 1024), mode="bilinear", align_corners=True)
+        upsample_score = upsample_score.transpose(1, 2).transpose(2, 3).contiguous().view(-1, 19)
+
+        cross_entropy_loss = F.cross_entropy(upsample_score, target.view(-1), size_average=self.size_average, ignore_index=self.ignore_label)
+
+        if train_type == "regular":
+            loss = cross_entropy_loss
+        elif train_type == "pixel_loss":
+            loss = cross_entropy_loss + self.lambda_ * score_kl
+        elif train_type == "pair":
+            loss = cross_entropy_loss + self.lambda_*(self.cs(student_feat, teacher_feat, self.y) + score_kl)
+        else:
+            raise NotImplementedError()
+
+        return loss
+
+    def forward(self, x):
+        feature = self.backbone(x)
+        score = self.softmax(self.classification(feature))
+
+        return feature, score

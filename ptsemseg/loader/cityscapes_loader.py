@@ -2,11 +2,9 @@ import os
 import torch
 import numpy as np
 import scipy.misc as m
+import pickle
 
 from torch.utils import data
-
-from ptsemseg.utils import recursive_glob
-from ptsemseg.augmentations import Compose, RandomHorizontallyFlip, RandomRotate, Scale
 
 
 class cityscapesLoader(data.Dataset):
@@ -51,12 +49,9 @@ class cityscapesLoader(data.Dataset):
         self,
         root,
         split="train",
-        is_transform=False,
+        is_transform=True,
         img_size=(512, 1024),
-        augmentations=None,
-        img_norm=False,
-        version="cityscapes",
-        test_mode=False,
+        img_norm=False
     ):
         """__init__
         :param root:
@@ -68,7 +63,6 @@ class cityscapesLoader(data.Dataset):
         self.root = root
         self.split = split
         self.is_transform = is_transform
-        self.augmentations = augmentations
         self.img_norm = img_norm
         self.n_classes = 19
         self.img_size = img_size if isinstance(img_size, tuple) else (img_size, img_size)
@@ -78,7 +72,7 @@ class cityscapesLoader(data.Dataset):
         self.images_base = os.path.join(self.root, "leftImg8bit", self.split)
         self.annotations_base = os.path.join(self.root, "gtFine", self.split)
 
-        self.files[split] = recursive_glob(rootdir=self.images_base, suffix=".png")
+        self.files[split] = self.recursive_glob(rootdir=self.images_base, suffix=".png")
 
         self.void_classes = [0, 1, 2, 3, 4, 5, 6, 9, 10, 14, 15, 16, 18, 29, 30, -1]
         self.valid_classes = [
@@ -147,6 +141,11 @@ class cityscapesLoader(data.Dataset):
             img_path.split(os.sep)[-2],
             os.path.basename(img_path)[:-15] + "gtFine_labelIds.png",
         )
+        feature_path = os.path.join(
+            self.root,
+            "features",
+            os.path.basename(img_path)[:-4] + ".pkl"
+        )
 
         img = m.imread(img_path)
         img = np.array(img, dtype=np.uint8)
@@ -154,13 +153,13 @@ class cityscapesLoader(data.Dataset):
         lbl = m.imread(lbl_path)
         lbl = self.encode_segmap(np.array(lbl, dtype=np.uint8))
 
-        if self.augmentations is not None:
-            img, lbl = self.augmentations(img, lbl)
+        with open(feature_path, 'rb') as handle:
+            feature = pickle.load(handle)
 
         if self.is_transform:
             img, lbl = self.transform(img, lbl)
 
-        return img, lbl, os.path.basename(img_path)
+        return img, lbl, feature['cbr_final'], feature['classification']
 
     def transform(self, img, lbl):
         """transform
@@ -195,6 +194,18 @@ class cityscapesLoader(data.Dataset):
 
         return img, lbl
 
+    def recursive_glob(self, rootdir=".", suffix=""):
+        """Performs recursive glob with given suffix and rootdir
+            :param rootdir is the root directory
+            :param suffix is the suffix to be searched
+        """
+        return [
+            os.path.join(looproot, filename)
+            for looproot, _, filenames in os.walk(rootdir)
+            for filename in filenames
+            if filename.endswith(suffix)
+        ]
+
     def decode_segmap(self, temp):
         r = temp.copy()
         g = temp.copy()
@@ -220,28 +231,11 @@ class cityscapesLoader(data.Dataset):
 
 
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
 
-    augmentations = Compose([Scale(2048), RandomRotate(10), RandomHorizontallyFlip(0.5)])
+    t_loader = cityscapesLoader(
+        "/mnt/4c71d2c2-a089-4f4b-abb2-5f3c31b21334/cityscapes",
+        is_transform=True,
+        split="train",
+        img_size=(512, 1024))
 
-    local_path = "/datasets01/cityscapes/112817/"
-    dst = cityscapesLoader(local_path, is_transform=True, augmentations=augmentations)
-    bs = 4
-    trainloader = data.DataLoader(dst, batch_size=bs, num_workers=0)
-    for i, data_samples in enumerate(trainloader):
-        imgs, labels = data_samples
-        import pdb
-
-        pdb.set_trace()
-        imgs = imgs.numpy()[:, ::-1, :, :]
-        imgs = np.transpose(imgs, [0, 2, 3, 1])
-        f, axarr = plt.subplots(bs, 2)
-        for j in range(bs):
-            axarr[j][0].imshow(imgs[j])
-            axarr[j][1].imshow(dst.decode_segmap(labels.numpy()[j]))
-        plt.show()
-        a = input()
-        if a == "ex":
-            break
-        else:
-            plt.close()
+    img, lbl, cbr, score = t_loader[0]

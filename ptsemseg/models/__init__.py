@@ -1,7 +1,7 @@
 import copy
 import torchvision.models as models
 
-from ptsemseg.models.fcn import fcn8s, fcn16s, fcn32s
+from ptsemseg.models.fcn import fcn8s, fcn16s, fcn32s, ResNetFCN
 from ptsemseg.models.segnet import segnet
 from ptsemseg.models.unet import unet
 from ptsemseg.models.pspnet import pspnet
@@ -41,6 +41,9 @@ def get_model(model_dict, n_classes, version=None):
     elif name == "icnetBN":
         model = model(n_classes=n_classes, **param_dict)
 
+    elif name == "ResNetFCN":
+        model = model(n_classes=n_classes, **param_dict)
+
     else:
         model = model(n_classes=n_classes, **param_dict)
 
@@ -61,6 +64,7 @@ def _get_model_instance(name):
             "linknet": linknet,
             "frrnA": frrn,
             "frrnB": frrn,
+            "ResNetFCN": ResNetFCN,
         }[name]
     except:
         raise ("Model {} not available".format(name))
