@@ -141,11 +141,15 @@ class cityscapesLoader(data.Dataset):
             img_path.split(os.sep)[-2],
             os.path.basename(img_path)[:-15] + "gtFine_labelIds.png",
         )
-        feature_path = os.path.join(
-            self.root,
-            "features",
-            os.path.basename(img_path)[:-4] + ".pkl"
-        )
+        if self.split == "train":
+            feature_path = os.path.join(
+                self.root,
+                "features",
+                os.path.basename(img_path)[:-4] + ".pkl"
+            )
+
+            with open(feature_path, 'rb') as handle:
+                feature = pickle.load(handle)
 
         img = m.imread(img_path)
         img = np.array(img, dtype=np.uint8)
@@ -153,13 +157,13 @@ class cityscapesLoader(data.Dataset):
         lbl = m.imread(lbl_path)
         lbl = self.encode_segmap(np.array(lbl, dtype=np.uint8))
 
-        with open(feature_path, 'rb') as handle:
-            feature = pickle.load(handle)
-
         if self.is_transform:
             img, lbl = self.transform(img, lbl)
 
-        return img, lbl, feature['cbr_final'], feature['classification']
+        if self.split == "train":
+            return img, lbl, feature['cbr_final'], feature['classification']
+
+        return img, lbl
 
     def transform(self, img, lbl):
         """transform
