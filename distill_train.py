@@ -22,17 +22,18 @@ from tensorboardX import SummaryWriter
 from datetime import datetime
 from ptsemseg.metrics import runningScore, averageMeter
 from ptsemseg.utils import convert_state_dict
+import torch.nn.functional as F
 
 
 def validate(model, valloader, device, writer, epoch):
 	model.eval()
-	running_metrics = runningScore(valloader.n_classes)
+	running_metrics = runningScore(19)
 
 	for i, (images, labels) in enumerate(valloader):
 
 		images = images.to(device)
 		_, outputs = model(images)
-		pred = outputs.data.max(1)[1].cpu().numpy()
+		pred = F.interpolate(outputs, (512, 1024), mode="bilinear", align_corners=True).data.max(1)[1].cpu().numpy()
 
 		gt = labels.numpy()
 		running_metrics.update(gt, pred)
@@ -88,7 +89,7 @@ def train(cfg):
 	# Setup Model
 	model_dict = {"arch": "ResNetFCN"}
 	model = get_model(model_dict, n_classes, version="cityscapes")
-	optimizer = SGD(model.parameters(), lr=0.01, momentum=0.9, weight_decay=0.0005)
+	optimizer = SGD(model.parameters(), lr=0.01, momentum=0.9, weight_decay=0.0005, nesterov=True)
 	scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=10)
 
 	model.train()
@@ -97,7 +98,6 @@ def train(cfg):
 	n_step = 0
 
 	for epoch in range(125):
-		scheduler.step()
 		for (images, target, teacher_feat, teacher_score) in tqdm(trainloader):
 			images = images.to(device)
 			target = target.to(device)
@@ -110,13 +110,14 @@ def train(cfg):
 			writer.add_scalar("train/loss", loss.item(), n_step)
 			loss.backward()
 			optimizer.step()
-			n_step += 1
 
 			if n_step % 250 == 0:
 				validate(model, valloader, device, writer, epoch)
 				model.train()
+			n_step += 1
+		scheduler.step(loss.item())
 
-		if epoch % 100 == 0 and epoch > 0:
+		if epoch % 25 == 0 and epoch > 0:
 			torch.save(model.state_dict(), "checkpoints/" + run_type + str(epoch) + ".pth")
 
 
